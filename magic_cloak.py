@@ -1,44 +1,87 @@
-# MAGIC CLOAK v1.0
+# MAGIC CLOAK v2.0 
 
 import cv2
 import numpy as np
 import time
 
 # ------------------ SETTINGS ------------------ #
-OUTPUT_FILE = 'mc_output.avi'
-BACKGROUND_CAPTURE_DELAY = 3  # seconds to wait before capturing background
+OUTPUT_FILE = 'magic_cloak_output.mp4'
 SAVE_VIDEO = True
-WINDOW_NAME = 'Magic Cloak v1.0'
+BACKGROUND_CAPTURE_DELAY = 3
+WINDOW_NAME = 'Magic Cloak 2.0'
+CLICKED = False
+hsv_value = None
+MARGIN = 20  # margin for hue range
 # ------------------------------------------------ #
 
 def nothing(x):
     pass
 
-# Open webcam
+def pick_color(event, x, y, flags, param):
+    global hsv_value, CLICKED
+    if event == cv2.EVENT_LBUTTONDOWN:
+        frame = param
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        hsv_value = hsv[y, x]
+        CLICKED = True
+
 cap = cv2.VideoCapture(0)
 
-# Video writer if saving
-fourcc = cv2.VideoWriter_fourcc(*'XVID')
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 out = None
 
-# Create a window
-cv2.namedWindow(WINDOW_NAME)
+start_time = time.time()
+countdown = BACKGROUND_CAPTURE_DELAY
 
-# Create trackbars for dynamic HSV range adjustment
-cv2.createTrackbar('LH', WINDOW_NAME, 0, 180, nothing)
-cv2.createTrackbar('LS', WINDOW_NAME, 120, 255, nothing)
-cv2.createTrackbar('LV', WINDOW_NAME, 70, 255, nothing)
-cv2.createTrackbar('UH', WINDOW_NAME, 10, 180, nothing)
-cv2.createTrackbar('US', WINDOW_NAME, 255, 255, nothing)
-cv2.createTrackbar('UV', WINDOW_NAME, 255, 255, nothing)
+while countdown > 0:
+    ret, frame = cap.read()
+    if not ret or frame is None:
+        continue
+    frame = np.flip(frame, axis=1)
+    
+    elapsed = int(time.time() - start_time)
+    if elapsed >= 1:
+        start_time = time.time()
+        countdown -= 1
+    
+    display_text = f"Capturing Background in {countdown}..." if countdown > 0 else "Capturing Background..."
+    frame_display = frame.copy()
+    cv2.putText(frame_display, display_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
+    
+    cv2.imshow(WINDOW_NAME, frame_display)
+    
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        cap.release()
+        cv2.destroyAllWindows()
+        exit()
 
-print("[INFO] Please stay out of frame. Capturing background in 3 seconds...")
-time.sleep(BACKGROUND_CAPTURE_DELAY)
 
-# Capture the static background
 ret, background = cap.read()
 background = np.flip(background, axis=1)
 print("[INFO] Background Captured Successfully!")
+
+print("[INFO] Please click on your cloak in the video window...")
+
+while not CLICKED:
+    ret, frame = cap.read()
+    if not ret:
+        break
+    frame = np.flip(frame, axis=1)
+    temp_frame = frame.copy()
+    cv2.putText(temp_frame, "Click on your cloak!", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,0,0), 3)
+    cv2.imshow(WINDOW_NAME, temp_frame)
+    cv2.setMouseCallback(WINDOW_NAME, pick_color, frame)
+    if cv2.waitKey(1) == ord('q'):
+        cap.release()
+        cv2.destroyAllWindows()
+        exit()
+
+print(f"[INFO] Cloak color selected: HSV={hsv_value}")
+
+lower_color = np.array([max(hsv_value[0] - MARGIN, 0), 100, 50])
+upper_color = np.array([min(hsv_value[0] + MARGIN, 180), 255, 255])
+
+print(f"[INFO] Lower HSV: {lower_color}, Upper HSV: {upper_color}")
 
 # Main loop
 while cap.isOpened():
@@ -48,17 +91,6 @@ while cap.isOpened():
     frame = np.flip(frame, axis=1)
 
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
-    # Get current positions of trackbars
-    l_h = cv2.getTrackbarPos('LH', WINDOW_NAME)
-    l_s = cv2.getTrackbarPos('LS', WINDOW_NAME)
-    l_v = cv2.getTrackbarPos('LV', WINDOW_NAME)
-    u_h = cv2.getTrackbarPos('UH', WINDOW_NAME)
-    u_s = cv2.getTrackbarPos('US', WINDOW_NAME)
-    u_v = cv2.getTrackbarPos('UV', WINDOW_NAME)
-
-    lower_color = np.array([l_h, l_s, l_v])
-    upper_color = np.array([u_h, u_s, u_v])
 
     mask = cv2.inRange(hsv, lower_color, upper_color)
 
@@ -87,7 +119,6 @@ while cap.isOpened():
     if SAVE_VIDEO:
         out.write(final_output)
 
-    # Press 'q' to quit
     if cv2.waitKey(1) == ord('q'):
         break
 
